@@ -22,12 +22,38 @@ namespace Loader_Github
             InitializeComponent();
         }
 
+        string KEY = "Secret";
+        string LINK_GITHUB_RAW = "https://raw.githubusercontent.com/E0x00000/Loader-Git-Dependencies/main/BD.txt";
+
         
         string Request(string url)
         {
             WebClient client = new WebClient();
             string BD = client.DownloadString(url);
             return BD;
+        }
+
+        string encode(string text, string key)
+        {
+            byte[] textBytes = Encoding.UTF8.GetBytes(text);
+            byte[] keyBytes = Encoding.UTF8.GetBytes(key);
+            byte[] encryptedBytes = new byte[textBytes.Length];
+            for (int i = 0; i < textBytes.Length; i++)
+            {
+                encryptedBytes[i] = (byte)(textBytes[i] ^ keyBytes[i % keyBytes.Length]);
+            }
+            return Convert.ToBase64String(encryptedBytes);
+        }
+        string decode(string encryptedText, string key)
+        {
+            byte[] encryptedBytes = Convert.FromBase64String(encryptedText);
+            byte[] keyBytes = Encoding.UTF8.GetBytes(key);
+            byte[] textBytes = new byte[encryptedBytes.Length];
+            for (int i = 0; i < encryptedBytes.Length; i++)
+            {
+                textBytes[i] = (byte)(encryptedBytes[i] ^ keyBytes[i % keyBytes.Length]);
+            }
+            return Encoding.UTF8.GetString(textBytes);
         }
 
         string get_hwid()
@@ -68,16 +94,54 @@ namespace Loader_Github
             }
         }
 
-
-        bool Login(string username, string password)
+        string get_password(string text)
         {
+            int indexPassword = text.IndexOf("password:");
+            if (indexPassword != -1)
+            {
+                int indexEnd = text.IndexOf(":", indexPassword + 9);
+                if (indexEnd == -1)
+                {
+                    indexEnd = text.Length;
+                }
+                string passwordSubstring = text.Substring(indexPassword + 9, indexEnd - indexPassword - 9);
+                return passwordSubstring.Trim();
+            }
+            return null;
+        }
+
+        string replace(string text, string encryptedPassword, string decryptedPassword)
+        {
+            return text.Replace($"password:{encryptedPassword}", $"password:{decryptedPassword}");
+        }
+
+        string decryptedPassword;
+        bool Login(string username, string password, bool checkbox)
+        {
+            
             string hwid = get_hwid();
+            string encryptedText = encode(password, KEY);
             string base_login_partial = $"{{username:{username}:password:{password}:hwid:{hwid}";
+            string base_login_partial_ec = $"{{username:{username}:password:{encryptedText}:hwid:{hwid}";
+            if(checkbox)
+            {
+                MessageBox.Show(base_login_partial_ec);
+                return false;
+            }
+
+            
+
 
             bool isAuthenticated = false;
             try
             {
-                string valid = Request("https://raw.githubusercontent.com/E0x00000/Loader-Git-Dependencies/main/BD.txt");
+                string valid = Request(LINK_GITHUB_RAW);
+                string encryptedPassword = get_password(valid);
+                if (encryptedPassword != "")
+                {
+                    string decryptedPassword = decode(encryptedPassword, KEY);
+                    valid = replace(valid, encryptedPassword, decryptedPassword);
+                }
                 if (valid.Contains(base_login_partial))
                 {
                     int indexExpires = valid.IndexOf("expires:");
@@ -97,12 +161,12 @@ namespace Loader_Github
                     }
                 }
                 else
-                {
+                { 
                     if (!valid.Contains($"username:{username}"))
                     {
                         MessageBox.Show("Invalid Username");
                     }
-                    else if (!valid.Contains($"password:{password}"))
+                    else if (!valid.Contains($"password:{decryptedPassword}"))
                     {
                         MessageBox.Show("Invalid Password");
                     }
@@ -112,6 +176,7 @@ namespace Loader_Github
                     }
                     else
                     {
+
                         MessageBox.Show("Invalid Credentials");
                     }
                 }
@@ -127,7 +192,8 @@ namespace Loader_Github
 
         private void button1_Click(object sender, EventArgs e)
         {
-            Login(textBox1.Text, textBox2.Text);
+            Login(textBox1.Text, textBox2.Text, checkBox1.Checked);
+
         }
     }
 }
